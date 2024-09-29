@@ -2,24 +2,31 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
+import plotly.graph_objects as go
 import plotly.express as px
 
 # Function to scrape stock data from Screener.in
 def scrape_screener(stock_symbol):
+    # Screener URL for the stock
     url = f"https://www.screener.in/company/{stock_symbol}/"
+
+    # Send a GET request to the website with headers
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
     }
-    
     response = requests.get(url, headers=headers)
 
     if response.status_code != 200:
         st.error(f"Failed to retrieve data for {stock_symbol}. Status code: {response.status_code}")
         return None
 
+    # Parse the webpage content using BeautifulSoup
     soup = BeautifulSoup(response.content, 'html.parser')
+
+    # Dictionary to store the scraped data
     data = {}
 
+    # Targeting the relevant section of the page for financial metrics
     try:
         # Find the container that holds the financial metrics
         metrics_container = soup.find_all('li', class_='flex flex-space-between')
@@ -28,6 +35,7 @@ def scrape_screener(stock_symbol):
             label = metric.find('span', class_='name')
             value = metric.find('span', class_='number')
             if label and value:
+                # Store data in the dictionary
                 data[label.get_text(strip=True)] = value.get_text(strip=True)
 
     except Exception as e:
@@ -71,66 +79,77 @@ def main():
     if financials is not None:
         try:
             # Extracting relevant financial data
-            current_pe = float(financials.get('PE', 0).replace(',', ''))  # Replace commas for conversion
-            fy23_net_profit = float(financials.get('Net Profit', 0).replace(',', ''))  # Replace commas for conversion
-            fy23_pe = current_pe  # Assuming FY23 PE is the same as the current PE
-            roce_median = float(financials.get('RoCE', 0).replace('%', '').strip())  # Replace % for conversion
+            pe_value = financials.get('PE Ratio', 'N/A')  # Ensure the key matches the scraped data
+            fy23_pe = float(pe_value) if pe_value != 'N/A' else 0  # Convert to float if available
+            market_cap = financials.get('Market Cap', 'N/A')
+            roce_median = financials.get('5 Yr Median RoCE', 'N/A')
 
-            st.write(f"Current PE: {current_pe}")
-            st.write(f"FY23 Net Profit: {fy23_net_profit}")
+            st.write(f"Current PE: {pe_value}")
+            st.write(f"Market Cap: {market_cap}")
             st.write(f"5-Year Median RoCE (Pre-tax): {roce_median}")
 
-            # Sample growth data (you'll need to scrape this too or use placeholder data)
+            # Sample growth data (this needs to be scraped separately if available)
             growth_data = {
-                "10Y Sales Growth": 12.0,  # Placeholder
-                "5Y Sales Growth": 8.0,    # Placeholder
-                "3Y Sales Growth": 5.0,    # Placeholder
-                "TTM Sales Growth": 10.0,  # Placeholder
-                "10Y Profit Growth": 11.0,  # Placeholder
-                "5Y Profit Growth": 7.0,    # Placeholder
-                "3Y Profit Growth": 4.0,    # Placeholder
-                "TTM Profit Growth": 9.0,   # Placeholder
+                "10Y Sales Growth": "N/A",
+                "5Y Sales Growth": "N/A",
+                "3Y Sales Growth": "N/A",
+                "TTM Sales Growth": "N/A",
+                "10Y Profit Growth": "N/A",
+                "5Y Profit Growth": "N/A",
+                "3Y Profit Growth": "N/A",
+                "TTM Profit Growth": "N/A",
             }
 
             # Sales and Profit Growth Table
             growth_df = pd.DataFrame({
                 "Period": ["10Y", "5Y", "3Y", "TTM"],
-                "Sales Growth (%)": [growth_data["10Y Sales Growth"], growth_data["5Y Sales Growth"], growth_data["3Y Sales Growth"], growth_data["TTM Sales Growth"]],
-                "Profit Growth (%)": [growth_data["10Y Profit Growth"], growth_data["5Y Profit Growth"], growth_data["3Y Profit Growth"], growth_data["TTM Profit Growth"]],
+                "Sales Growth": [growth_data["10Y Sales Growth"], growth_data["5Y Sales Growth"], growth_data["3Y Sales Growth"], growth_data["TTM Sales Growth"]],
+                "Profit Growth": [growth_data["10Y Profit Growth"], growth_data["5Y Profit Growth"], growth_data["3Y Profit Growth"], growth_data["TTM Profit Growth"]],
             })
 
             st.table(growth_df)
 
-            # Plot sales growth
-            fig_sales = px.bar(growth_df, x='Period', y='Sales Growth (%)', title="Sales Growth over Different Periods")
+            # Plot sales growth (currently static data, replace with actual scraped data)
+            fig_sales = px.bar(growth_df, x='Period', y='Sales Growth', title="Sales Growth over Different Periods")
             st.plotly_chart(fig_sales)
 
-            # Plot profit growth
-            fig_profit = px.bar(growth_df, x='Period', y='Profit Growth (%)', title="Profit Growth over Different Periods")
+            # Plot profit growth (currently static data, replace with actual scraped data)
+            fig_profit = px.bar(growth_df, x='Period', y='Profit Growth', title="Profit Growth over Different Periods")
             st.plotly_chart(fig_profit)
 
             # Perform Intrinsic PE calculation
-            intrinsic_pe = calculate_intrinsic_pe(cost_of_capital, roce_median, growth_high, growth_period, fade_period, terminal_growth)
+            intrinsic_pe = calculate_intrinsic_pe(cost_of_capital, roce, growth_high, growth_period, fade_period, terminal_growth)
             st.write(f"Calculated Intrinsic PE: {intrinsic_pe}")
+
+            # Example values for Current PE and FY23 PE
+            current_pe = float(pe_value) if pe_value != 'N/A' else 0  # Ensure this is a float for calculations
 
             # Calculate degree of overvaluation
             degree_of_ov = calculate_overvaluation(current_pe, fy23_pe, intrinsic_pe)
             st.write(f"Degree of Overvaluation: {degree_of_ov}%")
 
             # Visualization using Plotly for Degree of Overvaluation
-            fig = px.gauge(
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
                 value=degree_of_ov,
-                title='Overvaluation Degree',
-                range=[-100, 100],
-                color=degree_of_ov,
-                color_continuous_scale=px.colors.sequential.Plasma
-            )
+                title={'text': "Overvaluation Degree"},
+                gauge={'axis': {'range': [-100, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+                        'bar': {'color': "red"},
+                        'bgcolor': "white",
+                        'borderwidth': 2,
+                        'bordercolor': "gray",
+                        'steps': [
+                            {'range': [-100, 0], 'color': 'lightgreen'},
+                            {'range': [0, 100], 'color': 'lightcoral'}],
+                        'threshold': {
+                            'line': {'color': "red", 'width': 4},
+                            'thickness': 0.75,
+                            'value': degree_of_ov}}))
+
             st.plotly_chart(fig)
 
-        except ValueError as e:
-            st.error(f"Value conversion error: {e}")
-        except KeyError as e:
-            st.error(f"Missing key in the fetched data: {e}")
+        except Exception as e:
+            st.error(f"An error occurred while processing the data: {e}")
 
 if __name__ == "__main__":
     main()
