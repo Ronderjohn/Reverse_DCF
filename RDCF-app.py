@@ -1,87 +1,186 @@
 import streamlit as st
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+import requests
+from bs4 import BeautifulSoup
 import pandas as pd
+import plotly.graph_objects as go
+import plotly.express as px
 
 # Function to scrape stock data from Screener.in
 def scrape_screener(stock_symbol):
-    # Initialize Selenium WebDriver
-    service = Service('/path/to/chromedriver')  # Update path to your chromedriver
-    options = webdriver.ChromeOptions()
-    options.add_argument('--headless')  # Run in headless mode
-    driver = webdriver.Chrome(service=service, options=options)
+    # Screener URL for the stock
+    url = f"https://www.screener.in/company/{stock_symbol}/"
 
+    # Send a GET request to the website with headers
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+    }
+    response = requests.get(url, headers=headers)
+
+    if response.status_code != 200:
+        st.error(f"Failed to retrieve data for {stock_symbol}. Status code: {response.status_code}")
+        return None
+
+    # Parse the webpage content using BeautifulSoup
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    # Dictionary to store the scraped data
+    data = {}
+
+    # Targeting the relevant section of the page for financial metrics
     try:
-        # Load the stock page
-        url = f"https://www.screener.in/company/{stock_symbol}/"
-        driver.get(url)
+        # Find the container that holds the financial metrics
+        metrics_container = soup.find_all('li', class_='flex flex-space-between')
 
-        # Wait until the page loads and the "5Yr" button is clickable
-        wait = WebDriverWait(driver, 10)
-        five_year_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@value='1825']")))
-        five_year_button.click()  # Click the "5Yr" button
+        # Dictionary to hold the desired metrics
+        metric_map = {
+            'Stock P/E': 'Stock P/E',
+            'EPS (TTM)': 'EPS TTM',
+            'Market Cap': 'Market Cap',
+            'Net Profit (FY23)': 'Net Profit FY23',
+            '5 Yr Median RoCE': '5 Yr Median RoCE'
+        }
 
-        # Wait for the chart to load
-        wait.until(EC.presence_of_element_located((By.ID, 'chart')))
-
-        # Extracting the tooltip values
-        chart_section = driver.find_element(By.ID, 'chart')
-        
-        # Find the tooltip for the date 1 year prior
-        # Adjusting to the correct date might require some manipulation based on the current date
-        tooltip = driver.find_element(By.XPATH, "//div[@id='chart-tooltip-title']")
-
-        # Extract values from the tooltip
-        tooltip_text = tooltip.text
-        values = {}
-        if "PE:" in tooltip_text:
-            # Parse PE and EPS from the tooltip text
-            parts = tooltip_text.split(' ')
-            for part in parts:
-                if 'PE:' in part:
-                    values['FY23 PE'] = part.split(':')[1].strip()
-                elif 'EPS:' in part:
-                    values['EPS TTM'] = part.split(':')[1].strip()
-
-        # Extract other metrics from the page
-        metrics_container = driver.find_elements(By.CLASS_NAME, 'flex.flex-space-between')
         for metric in metrics_container:
-            label = metric.find_element(By.CLASS_NAME, 'name').text
-            value = metric.find_element(By.CLASS_NAME, 'number').text.replace(',', '')
+            label = metric.find('span', class_='name')
+            value = metric.find('span', class_='number')
+            if label and value:
+                label_text = label.get_text(strip=True)
+                value_text = value.get_text(strip=True).replace(',', '')  # Remove commas for conversion
 
-            # Store relevant data only
-            if label in ['Stock P/E', 'Market Cap', 'Net Profit (FY23)']:
-                values[label] = value
+                # Store relevant data only
+                if label_text in metric_map:
+                    data[metric_map[label_text]] = value_text
 
-        # Extract 5-Year Median RoCE from the chart legend or tooltip (if present)
-        legend_items = chart_section.find_elements(By.TAG_NAME, 'label')
-        for item in legend_items:
-            if "Median RoCE" in item.text:
-                values['5 Yr Median RoCE'] = item.text.split('=')[-1].strip()
+        # Extract FY23 PE and 5 Year Median RoCE from the chart tooltip
+        chart_tooltip = soup.find('div', id='chart-tooltip-title')
+        if chart_tooltip:
+            # Extract PE and EPS values from the tooltip
+            tooltip_text = chart_tooltip.get_text(strip=True)
+            if "PE:" in tooltip_text:
+                # Extract PE value
+                pe_value = tooltip_text.split('PE: ')[1].split()[0]  # Get the PE value after 'PE: '
+                data['FY23 PE'] = pe_value
+            
+            if "EPS:" in tooltip_text:
+                # Extract EPS value (if needed)
+                eps_value = tooltip_text.split('EPS: ')[1].split()[0]  # Get the EPS value after 'EPS: '
+
+        # Get the Median PE from the chart legend
+        chart_legend = soup.find(id='chart-legend')
+        if chart_legend:
+            median_pe_text = [label.get_text(strip=True) for label in chart_legend.find_all('label')]
+            for label in median_pe_text:
+                if "Median PE" in label:
+                    data['5 Yr Median RoCE'] = label.split('= ')[1]  # Get the value after 'Median PE = '
 
     except Exception as e:
         st.error(f"Error occurred: {e}")
         return None
-    finally:
-        driver.quit()  # Ensure the browser is closed after execution
 
-    return values
+    return data
 
-# Streamlit app to use the scrape_screener function
+# DCF model for intrinsic PE calculation
+def calculate_intrinsic_pe(cost_of_capital, roce, growth_high, growth_period, fade_period, terminal_growth):
+    tax_rate = 0.25
+    intrinsic_pe = (roce - tax_rate) / cost_of_capital * growth_high * (growth_period + fade_period)
+    return round(intrinsic_pe, 2)
+
+# Degree of overvaluation calculation
+def calculate_overvaluation(current_pe, fy23_pe, intrinsic_pe):
+    if current_pe < fy23_pe:
+        degree_of_ov = (current_pe / intrinsic_pe) - 1
+    else:
+        degree_of_ov = (fy23_pe / intrinsic_pe) - 1
+    return round(degree_of_ov * 100, 2)  # Expressed as a percentage
+
+# Main Streamlit app structure
 def main():
-    st.title("Screener.in Stock Data Scraper")
-    stock_symbol = st.text_input("Enter Stock Symbol (e.g., AAPL):")
-    
-    if st.button("Scrape Data"):
-        if stock_symbol:
-            data = scrape_screener(stock_symbol)
-            if data:
-                st.write(data)
-        else:
-            st.error("Please enter a valid stock symbol.")
+    st.title("Financial Data Analysis and Intrinsic PE Calculation")
+    st.sidebar.header("User Input")
+
+    # User Inputs for NSE/BSE Symbol and Financial Parameters
+    symbol = st.sidebar.text_input("Enter NSE/BSE Symbol", "NESTLEIND")
+    cost_of_capital = st.sidebar.slider("Cost of Capital (%)", 5, 15, 10)
+    roce = st.sidebar.slider("RoCE (%)", 5, 50, 20)
+    growth_high = st.sidebar.slider("High Growth Rate (%)", 5, 30, 15)
+    growth_period = st.sidebar.slider("High Growth Period (Years)", 5, 20, 15)
+    fade_period = st.sidebar.slider("Fade Period (Years)", 5, 20, 15)
+    terminal_growth = st.sidebar.slider("Terminal Growth Rate (%)", 1, 5, 2)
+
+    # Fetch company data
+    st.subheader(f"Financial Data for {symbol}")
+    financials = scrape_screener(symbol)
+
+    if financials is not None:
+        try:
+            # Extracting relevant financial data
+            current_pe = float(financials.get('Stock P/E', '0'))  # Default to 0 if not available
+            fy23_pe = float(financials.get('FY23 PE', '0'))  # Fetching FY23 PE directly from scraped data
+            roce = float(financials.get('5 Yr Median RoCE', '0'))
+
+            st.write(f"Current PE: {current_pe}")
+            st.write(f"FY23 PE: {fy23_pe}")
+            st.write(f"5-Year Median RoCE (Pre-tax): {roce}")
+
+            # Sample growth data (this needs to be scraped separately if available)
+            growth_data = {
+                "10Y Sales Growth": "N/A",
+                "5Y Sales Growth": "N/A",
+                "3Y Sales Growth": "N/A",
+                "TTM Sales Growth": "N/A",
+                "10Y Profit Growth": "N/A",
+                "5Y Profit Growth": "N/A",
+                "3Y Profit Growth": "N/A",
+                "TTM Profit Growth": "N/A",
+            }
+
+            # Sales and Profit Growth Table
+            growth_df = pd.DataFrame({
+                "Period": ["10Y", "5Y", "3Y", "TTM"],
+                "Sales Growth": [growth_data["10Y Sales Growth"], growth_data["5Y Sales Growth"], growth_data["3Y Sales Growth"], growth_data["TTM Sales Growth"]],
+                "Profit Growth": [growth_data["10Y Profit Growth"], growth_data["5Y Profit Growth"], growth_data["3Y Profit Growth"], growth_data["TTM Profit Growth"]],
+            })
+
+            st.table(growth_df)
+
+            # Plot sales growth (currently static data, replace with actual scraped data)
+            fig_sales = px.bar(growth_df, x='Period', y='Sales Growth', title="Sales Growth over Different Periods")
+            st.plotly_chart(fig_sales)
+
+            # Plot profit growth (currently static data, replace with actual scraped data)
+            fig_profit = px.bar(growth_df, x='Period', y='Profit Growth', title="Profit Growth over Different Periods")
+            st.plotly_chart(fig_profit)
+
+            # Perform Intrinsic PE calculation
+            intrinsic_pe = calculate_intrinsic_pe(cost_of_capital, roce, growth_high, growth_period, fade_period, terminal_growth)
+            st.write(f"Calculated Intrinsic PE: {intrinsic_pe}")
+
+            # Calculate degree of overvaluation
+            degree_of_ov = calculate_overvaluation(current_pe, fy23_pe, intrinsic_pe)
+            st.write(f"Degree of Overvaluation: {degree_of_ov}%")
+
+            # Visualization using Plotly for Degree of Overvaluation
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=degree_of_ov,
+                title={'text': "Overvaluation Degree"},
+                gauge={'axis': {'range': [-100, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+                        'bar': {'color': "red"},
+                        'bgcolor': "white",
+                        'borderwidth': 2,
+                        'bordercolor': "gray",
+                        'steps': [
+                            {'range': [-100, 0], 'color': 'lightgreen'},
+                            {'range': [0, 100], 'color': 'lightcoral'}],
+                        'threshold': {
+                            'line': {'color': "red", 'width': 4},
+                            'thickness': 0.75,
+                            'value': degree_of_ov}}))
+
+            st.plotly_chart(fig)
+
+        except Exception as e:
+            st.error(f"An error occurred while processing the data: {e}")
 
 if __name__ == "__main__":
     main()
