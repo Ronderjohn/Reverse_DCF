@@ -6,11 +6,10 @@ import plotly.express as px
 
 # Function to fetch company data using fdscraper
 def fetch_company_data(symbol):
-    # Fetch financial data
     try:
         # Fetch the financial data for the given symbol
-        financial_data = fds.get_data(symbol)
-        return financial_data
+        data = fds.screener(symbol)
+        return data
     except Exception as e:
         st.error(f"Error fetching data for {symbol}: {e}")
         return None
@@ -48,12 +47,12 @@ def main():
     financials = fetch_company_data(symbol)
 
     if financials is not None:
-        # Extracting relevant financial data
         try:
-            pe_value = financials['current_pe']
-            market_cap = financials['market_cap']
-            net_profit_fy23 = financials['net_profit']
-            roce_median = financials['5yr_roce']  # Adjust this key based on actual data structure
+            # Extracting relevant financial data
+            pe_value = financials['PE']  # Adjust according to actual data key
+            market_cap = financials['Market Cap']  # Adjust according to actual data key
+            net_profit_fy23 = financials['Net Profit FY23']  # Adjust according to actual data key
+            roce_median = financials['5 Yr Median RoCE']  # Adjust according to actual data key
 
             st.write(f"Stock PE: {pe_value}")
             st.write(f"Market Cap: {market_cap}")
