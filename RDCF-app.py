@@ -8,7 +8,8 @@ import plotly.express as px
 def fetch_company_data(symbol):
     # Fetch financial data
     try:
-        data = fds.FD.screener(symbol)
+        # Retrieve the financials for the given symbol
+        data = fds.get_financials(symbol)
         return data
     except Exception as e:
         st.error(f"Error fetching data for {symbol}: {e}")
@@ -51,7 +52,7 @@ def main():
         pe_value = financials['pe']
         market_cap = financials['market_cap']
         net_profit_fy23 = financials['net_profit']
-        roce_median = financials['roce_median']
+        roce_median = financials['roce']
 
         st.write(f"Stock PE: {pe_value}")
         st.write(f"Market Cap: {market_cap}")
