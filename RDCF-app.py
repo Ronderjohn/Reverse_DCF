@@ -19,23 +19,27 @@ def fetch_company_data(symbol):
 
 # Function to extract financial metrics from the scraped page
 def extract_financials(soup):
+    # Find Stock PE
     try:
-        pe_value = soup.find(text="Stock PE").find_next("span").text.strip()
+        pe_value = soup.find(text="Stock P/E").find_next("span").text.strip()
     except:
         pe_value = "N/A"
-    
+
+    # Find Market Cap
     try:
         market_cap = soup.find(text="Market Cap").find_next("span").text.strip()
     except:
         market_cap = "N/A"
-    
+
+    # Find Net Profit for FY23 (Assuming this is found in the 'Profit & Loss' section)
     try:
-        net_profit_fy23 = soup.find(text="Net Profit").find_next("td").text.strip()
+        net_profit_fy23 = soup.find("td", string="Net Profit").find_next("td").text.strip()
     except:
         net_profit_fy23 = "N/A"
-    
+
+    # Find 5-Year RoCE Median
     try:
-        roce_values = soup.find(text="RoCE").find_all_next("td", limit=5)
+        roce_values = soup.find(text="RoCE %").find_all_next("td", limit=5)
         roce_median = pd.Series([float(value.text.strip('%')) for value in roce_values]).median()
     except:
         roce_median = "N/A"
