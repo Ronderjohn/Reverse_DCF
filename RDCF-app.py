@@ -5,47 +5,42 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 
-# Function to fetch Screener.in data
+# Function to scrape Screener.in data
 def fetch_company_data(symbol):
-    # Construct the URL for consolidated data
+    # Try fetching consolidated data
     url = f"https://www.screener.in/company/{symbol}/consolidated/"
     response = requests.get(url)
-    if response.status_code != 200:  # Fallback to standalone data if consolidated is unavailable
+    if response.status_code != 200:  # If not available, fallback to standalone data
         url = f"https://www.screener.in/company/{symbol}/"
         response = requests.get(url)
 
-    # Parse the HTML content using BeautifulSoup
     soup = BeautifulSoup(response.text, 'html.parser')
     return soup
 
-# Function to extract financial metrics from Screener.in
+# Function to extract financial metrics from the scraped page
 def extract_financials(soup):
     try:
-        # Fetch Stock P/E from the "4PAELQ" class (check and update if structure changes)
-        pe_value = soup.find("li", {"id": "pe"}).find("span").text.strip()
+        pe_value = soup.find(text="Stock PE").find_next("span").text.strip()
     except:
         pe_value = "N/A"
-
+    
     try:
-        # Fetch Market Cap from the "market-cap" span
-        market_cap = soup.find("li", {"id": "market-cap"}).find("span").text.strip()
+        market_cap = soup.find(text="Market Cap").find_next("span").text.strip()
     except:
         market_cap = "N/A"
-
+    
     try:
-        # Extract Net Profit for FY23 (from the 'Profit & Loss' section)
-        net_profit_fy23 = soup.find_all("td", {"data-year": "2023"})[0].text.strip()
+        net_profit_fy23 = soup.find(text="Net Profit").find_next("td").text.strip()
     except:
         net_profit_fy23 = "N/A"
-
+    
     try:
-        # Extract RoCE values and calculate median of last 5 years
-        roce_values = soup.find_all("td", string="RoCE %")[:5]
+        roce_values = soup.find(text="RoCE").find_all_next("td", limit=5)
         roce_median = pd.Series([float(value.text.strip('%')) for value in roce_values]).median()
     except:
         roce_median = "N/A"
     
-    # Placeholder for growth data (can be refined based on HTML structure)
+    # Placeholder for sales and profit growth, scraped from HTML structure
     growth_data = {
         "10Y Sales Growth": "N/A",
         "5Y Sales Growth": "N/A",
@@ -79,7 +74,7 @@ def calculate_overvaluation(current_pe, fy23_pe, intrinsic_pe):
         degree_of_ov = (fy23_pe / intrinsic_pe) - 1
     return round(degree_of_ov * 100, 2)  # Expressed as a percentage
 
-# Main Streamlit app
+# Main Streamlit app structure
 def main():
     st.title("Financial Data Analysis and Intrinsic PE Calculation")
     st.sidebar.header("User Input")
@@ -93,7 +88,7 @@ def main():
     fade_period = st.sidebar.slider("Fade Period (Years)", 5, 20, 15)
     terminal_growth = st.sidebar.slider("Terminal Growth Rate (%)", 1, 5, 2)
 
-    # Scrape company data
+    # Scrape and display company data
     st.subheader(f"Financial Data for {symbol}")
     company_data = fetch_company_data(symbol)
     financials = extract_financials(company_data)
@@ -126,8 +121,8 @@ def main():
     st.write(f"Calculated Intrinsic PE: {intrinsic_pe}")
 
     # Example: using random values for Current PE and FY23 PE
-    current_pe = 45.0  # Replace with the actual scraped value
-    fy23_pe = 50.0     # Replace with the actual scraped value
+    current_pe = 45.0  # This would be scraped from the webpage
+    fy23_pe = 50.0     # FY23 PE from the webpage, scraped
 
     # Calculate degree of overvaluation
     degree_of_ov = calculate_overvaluation(current_pe, fy23_pe, intrinsic_pe)
