@@ -2,5 +2,4 @@ streamlit
 bs4
 requests
 plotly
-fdscraper
-tqdm
+
