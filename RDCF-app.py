@@ -26,7 +26,7 @@ def scrape_screener(stock_symbol):
     # Dictionary to store the scraped data
     data = {}
 
-    # Scraping general financial metrics from the li elements
+    # Targeting the relevant section of the page for financial metrics
     try:
         # Find the container that holds the financial metrics
         metrics_container = soup.find_all('li', class_='flex flex-space-between')
@@ -51,24 +51,31 @@ def scrape_screener(stock_symbol):
                 if label_text in metric_map:
                     data[metric_map[label_text]] = value_text
 
+        # Extract FY23 PE and 5 Year Median RoCE from the chart tooltip
+        chart_tooltip = soup.find('div', id='chart-tooltip-title')
+        if chart_tooltip:
+            # Extract PE and EPS values from the tooltip
+            tooltip_text = chart_tooltip.get_text(strip=True)
+            if "PE:" in tooltip_text:
+                # Extract PE value
+                pe_value = tooltip_text.split('PE: ')[1].split()[0]  # Get the PE value after 'PE: '
+                data['FY23 PE'] = pe_value
+            
+            if "EPS:" in tooltip_text:
+                # Extract EPS value (if needed)
+                eps_value = tooltip_text.split('EPS: ')[1].split()[0]  # Get the EPS value after 'EPS: '
+
+        # Get the Median PE from the chart legend
+        chart_legend = soup.find(id='chart-legend')
+        if chart_legend:
+            median_pe_text = [label.get_text(strip=True) for label in chart_legend.find_all('label')]
+            for label in median_pe_text:
+                if "Median PE" in label:
+                    data['5 Yr Median RoCE'] = label.split('= ')[1]  # Get the value after 'Median PE = '
+
     except Exception as e:
         st.error(f"Error occurred: {e}")
         return None
-
-    # Scraping Median PE from the chart legend
-    try:
-        # Find the chart legend (where Median PE is located)
-        chart_legend = soup.find('div', id='chart-legend')
-        median_pe_label = chart_legend.find(text=lambda t: "Median PE" in t)
-
-        if median_pe_label:
-            # Extract the Median PE value from the legend text
-            median_pe_text = median_pe_label.find_next('span').get_text(strip=True)
-            median_pe_value = median_pe_text.split('=')[-1].strip()
-            data['Median PE'] = median_pe_value
-
-    except Exception as e:
-        st.error(f"Error extracting Median PE: {e}")
 
     return data
 
@@ -108,7 +115,7 @@ def main():
         try:
             # Extracting relevant financial data
             current_pe = float(financials.get('Stock P/E', '0'))  # Default to 0 if not available
-            fy23_pe = float(financials.get('Net Profit FY23', '0')) / float(financials.get('EPS TTM', '1'))  # Assuming EPS TTM is available
+            fy23_pe = float(financials.get('FY23 PE', '0'))  # Fetching FY23 PE directly from scraped data
             roce = float(financials.get('5 Yr Median RoCE', '0'))
 
             st.write(f"Current PE: {current_pe}")
