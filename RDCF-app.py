@@ -33,7 +33,7 @@ def scrape_screener(stock_symbol):
 
         # Dictionary to hold the desired metrics
         metric_map = {
-            'PE Ratio': 'Current PE',
+            'PE Ratio': 'Stock P/E',
             'EPS (TTM)': 'EPS TTM',
             'Market Cap': 'Market Cap',
             'Net Profit (FY23)': 'Net Profit FY23',
