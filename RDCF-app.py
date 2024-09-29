@@ -26,7 +26,7 @@ def scrape_screener(stock_symbol):
     # Dictionary to store the scraped data
     data = {}
 
-    # Targeting the relevant section of the page for financial metrics
+    # Scraping general financial metrics from the li elements
     try:
         # Find the container that holds the financial metrics
         metrics_container = soup.find_all('li', class_='flex flex-space-between')
@@ -54,6 +54,21 @@ def scrape_screener(stock_symbol):
     except Exception as e:
         st.error(f"Error occurred: {e}")
         return None
+
+    # Scraping Median PE from the chart legend
+    try:
+        # Find the chart legend (where Median PE is located)
+        chart_legend = soup.find('div', id='chart-legend')
+        median_pe_label = chart_legend.find(text=lambda t: "Median PE" in t)
+
+        if median_pe_label:
+            # Extract the Median PE value from the legend text
+            median_pe_text = median_pe_label.find_next('span').get_text(strip=True)
+            median_pe_value = median_pe_text.split('=')[-1].strip()
+            data['Median PE'] = median_pe_value
+
+    except Exception as e:
+        st.error(f"Error extracting Median PE: {e}")
 
     return data
 
