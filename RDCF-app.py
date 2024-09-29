@@ -3,6 +3,8 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import datetime
+import plotly.graph_objects as go
+import plotly.express as px
 
 # Function to scrape stock data from Screener.in
 def scrape_screener(stock_symbol):
