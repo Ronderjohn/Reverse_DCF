@@ -1,64 +1,18 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
+import fdscraper as fds
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 
-# Function to scrape Screener.in data
+# Function to fetch company data using fdscraper
 def fetch_company_data(symbol):
-    # Try fetching consolidated data
-    url = f"https://www.screener.in/company/{symbol}/consolidated/"
-    response = requests.get(url)
-    if response.status_code != 200:  # If not available, fallback to standalone data
-        url = f"https://www.screener.in/company/{symbol}/"
-        response = requests.get(url)
-
-    soup = BeautifulSoup(response.text, 'html.parser')
-    return soup
-
-# Function to extract financial metrics from the scraped page
-def extract_financials(soup):
+    # Fetch financial data
     try:
-        pe_value = soup.find(text="Stock PE").find_next("span").text.strip()
-    except:
-        pe_value = "N/A"
-    
-    try:
-        market_cap = soup.find(text="Market Cap").find_next("span").text.strip()
-    except:
-        market_cap = "N/A"
-    
-    try:
-        net_profit_fy23 = soup.find(text="Net Profit").find_next("td").text.strip()
-    except:
-        net_profit_fy23 = "N/A"
-    
-    try:
-        roce_values = soup.find(text="RoCE").find_all_next("td", limit=5)
-        roce_median = pd.Series([float(value.text.strip('%')) for value in roce_values]).median()
-    except:
-        roce_median = "N/A"
-    
-    # Placeholder for sales and profit growth, scraped from HTML structure
-    growth_data = {
-        "10Y Sales Growth": "N/A",
-        "5Y Sales Growth": "N/A",
-        "3Y Sales Growth": "N/A",
-        "TTM Sales Growth": "N/A",
-        "10Y Profit Growth": "N/A",
-        "5Y Profit Growth": "N/A",
-        "3Y Profit Growth": "N/A",
-        "TTM Profit Growth": "N/A",
-    }
-
-    return {
-        "pe_value": pe_value,
-        "market_cap": market_cap,
-        "net_profit_fy23": net_profit_fy23,
-        "roce_median": roce_median,
-        "growth_data": growth_data,
-    }
+        data = fds.FD.screener(symbol)
+        return data
+    except Exception as e:
+        st.error(f"Error fetching data for {symbol}: {e}")
+        return None
 
 # DCF model for intrinsic PE calculation
 def calculate_intrinsic_pe(cost_of_capital, roce, growth_high, growth_period, fade_period, terminal_growth):
@@ -88,65 +42,82 @@ def main():
     fade_period = st.sidebar.slider("Fade Period (Years)", 5, 20, 15)
     terminal_growth = st.sidebar.slider("Terminal Growth Rate (%)", 1, 5, 2)
 
-    # Scrape and display company data
+    # Fetch company data
     st.subheader(f"Financial Data for {symbol}")
-    company_data = fetch_company_data(symbol)
-    financials = extract_financials(company_data)
+    financials = fetch_company_data(symbol)
 
-    # Display scraped data
-    st.write(f"Stock PE: {financials['pe_value']}")
-    st.write(f"Market Cap: {financials['market_cap']}")
-    st.write(f"FY23 Net Profit: {financials['net_profit_fy23']}")
-    st.write(f"5-Year Median RoCE (Pre-tax): {financials['roce_median']}")
+    if financials is not None:
+        # Display scraped data
+        pe_value = financials['pe']
+        market_cap = financials['market_cap']
+        net_profit_fy23 = financials['net_profit']
+        roce_median = financials['roce_median']
 
-    # Sales and Profit Growth Table
-    growth_df = pd.DataFrame({
-        "Period": ["10Y", "5Y", "3Y", "TTM"],
-        "Sales Growth": [financials['growth_data']["10Y Sales Growth"], financials['growth_data']["5Y Sales Growth"], financials['growth_data']["3Y Sales Growth"], financials['growth_data']["TTM Sales Growth"]],
-        "Profit Growth": [financials['growth_data']["10Y Profit Growth"], financials['growth_data']["5Y Profit Growth"], financials['growth_data']["3Y Profit Growth"], financials['growth_data']["TTM Profit Growth"]],
-    })
+        st.write(f"Stock PE: {pe_value}")
+        st.write(f"Market Cap: {market_cap}")
+        st.write(f"FY23 Net Profit: {net_profit_fy23}")
+        st.write(f"5-Year Median RoCE (Pre-tax): {roce_median}")
 
-    st.table(growth_df)
+        # Sample growth data (this should be adjusted according to actual data from fdscraper)
+        growth_data = {
+            "10Y Sales Growth": "N/A",
+            "5Y Sales Growth": "N/A",
+            "3Y Sales Growth": "N/A",
+            "TTM Sales Growth": "N/A",
+            "10Y Profit Growth": "N/A",
+            "5Y Profit Growth": "N/A",
+            "3Y Profit Growth": "N/A",
+            "TTM Profit Growth": "N/A",
+        }
 
-    # Plot sales growth
-    fig_sales = px.bar(growth_df, x='Period', y='Sales Growth', title="Sales Growth over Different Periods")
-    st.plotly_chart(fig_sales)
+        # Sales and Profit Growth Table
+        growth_df = pd.DataFrame({
+            "Period": ["10Y", "5Y", "3Y", "TTM"],
+            "Sales Growth": [growth_data["10Y Sales Growth"], growth_data["5Y Sales Growth"], growth_data["3Y Sales Growth"], growth_data["TTM Sales Growth"]],
+            "Profit Growth": [growth_data["10Y Profit Growth"], growth_data["5Y Profit Growth"], growth_data["3Y Profit Growth"], growth_data["TTM Profit Growth"]],
+        })
 
-    # Plot profit growth
-    fig_profit = px.bar(growth_df, x='Period', y='Profit Growth', title="Profit Growth over Different Periods")
-    st.plotly_chart(fig_profit)
+        st.table(growth_df)
 
-    # Perform Intrinsic PE calculation
-    intrinsic_pe = calculate_intrinsic_pe(cost_of_capital, roce, growth_high, growth_period, fade_period, terminal_growth)
-    st.write(f"Calculated Intrinsic PE: {intrinsic_pe}")
+        # Plot sales growth
+        fig_sales = px.bar(growth_df, x='Period', y='Sales Growth', title="Sales Growth over Different Periods")
+        st.plotly_chart(fig_sales)
 
-    # Example: using random values for Current PE and FY23 PE
-    current_pe = 45.0  # This would be scraped from the webpage
-    fy23_pe = 50.0     # FY23 PE from the webpage, scraped
+        # Plot profit growth
+        fig_profit = px.bar(growth_df, x='Period', y='Profit Growth', title="Profit Growth over Different Periods")
+        st.plotly_chart(fig_profit)
 
-    # Calculate degree of overvaluation
-    degree_of_ov = calculate_overvaluation(current_pe, fy23_pe, intrinsic_pe)
-    st.write(f"Degree of Overvaluation: {degree_of_ov}%")
+        # Perform Intrinsic PE calculation
+        intrinsic_pe = calculate_intrinsic_pe(cost_of_capital, roce, growth_high, growth_period, fade_period, terminal_growth)
+        st.write(f"Calculated Intrinsic PE: {intrinsic_pe}")
 
-    # Visualization using Plotly for Degree of Overvaluation
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=degree_of_ov,
-        title={'text': "Overvaluation Degree"},
-        gauge={'axis': {'range': [-100, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
-                'bar': {'color': "red"},
-                'bgcolor': "white",
-                'borderwidth': 2,
-                'bordercolor': "gray",
-                'steps': [
-                    {'range': [-100, 0], 'color': 'lightgreen'},
-                    {'range': [0, 100], 'color': 'lightcoral'}],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': degree_of_ov}}))
+        # Example values for Current PE and FY23 PE
+        current_pe = float(pe_value)  # Ensure this is a float for calculations
+        fy23_pe = float(pe_value)      # Assuming FY23 PE is the same as the current PE
 
-    st.plotly_chart(fig)
+        # Calculate degree of overvaluation
+        degree_of_ov = calculate_overvaluation(current_pe, fy23_pe, intrinsic_pe)
+        st.write(f"Degree of Overvaluation: {degree_of_ov}%")
+
+        # Visualization using Plotly for Degree of Overvaluation
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=degree_of_ov,
+            title={'text': "Overvaluation Degree"},
+            gauge={'axis': {'range': [-100, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+                    'bar': {'color': "red"},
+                    'bgcolor': "white",
+                    'borderwidth': 2,
+                    'bordercolor': "gray",
+                    'steps': [
+                        {'range': [-100, 0], 'color': 'lightgreen'},
+                        {'range': [0, 100], 'color': 'lightcoral'}],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': degree_of_ov}}))
+
+        st.plotly_chart(fig)
 
 if __name__ == "__main__":
     main()
