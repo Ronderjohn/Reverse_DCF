@@ -56,15 +56,18 @@ def scrape_screener(stock_symbol):
         if chart_tooltip:
             # Extract PE and EPS values from the tooltip
             tooltip_text = chart_tooltip.get_text(strip=True)
+            
+            # Position the tooltip for FY23 (one year from the current year)
+            # Assuming the tooltip contains information for the fiscal year for next year.
             if "PE:" in tooltip_text:
                 # Extract PE value
                 pe_value = tooltip_text.split('PE: ')[1].split()[0]  # Get the PE value after 'PE: '
-                data['FY23 PE'] = pe_value
-            
+                data['FY23 PE'] = pe_value  # Store the extracted FY23 PE value for next year
+                
             if "EPS:" in tooltip_text:
                 # Extract EPS value (if needed)
                 eps_value = tooltip_text.split('EPS: ')[1].split()[0]  # Get the EPS value after 'EPS: '
-
+        
         # Get the Median PE from the chart legend
         chart_legend = soup.find(id='chart-legend')
         if chart_legend:
