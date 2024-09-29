@@ -2,19 +2,11 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
-from datetime import datetime, timedelta
-
-# Function to scrape stock data from Screener.in
-import requests
-from bs4 import BeautifulSoup
-import streamlit as st
-from datetime import datetime, timedelta
+import datetime
 
 # Function to scrape stock data from Screener.in
 def scrape_screener(stock_symbol):
-    # Screener URL for the stock
+    # Screener URL for the stock (with 5Yr metrics)
     url = f"https://www.screener.in/company/{stock_symbol}/"
 
     # Send a GET request to the website with headers
@@ -33,58 +25,43 @@ def scrape_screener(stock_symbol):
     # Dictionary to store the scraped data
     data = {}
 
-    # Targeting the relevant section of the page for financial metrics
+    # Select the "5Yr" button (simulate the button click)
     try:
-        # Find the container that holds the financial metrics
-        metrics_container = soup.find_all('li', class_='flex flex-space-between')
+        five_year_button = soup.find('button', attrs={'value': '1825'})
+        if five_year_button:
+            # Simulating the selection of the 5Yr button by appending it to the URL
+            five_year_url = f"{url}?days=1825"
+            response = requests.get(five_year_url, headers=headers)
+            soup = BeautifulSoup(response.content, 'html.parser')
 
-        # Dictionary to hold the desired metrics
-        metric_map = {
-            'Stock P/E': 'Stock P/E',
-            'EPS (TTM)': 'EPS TTM',
-            'Market Cap': 'Market Cap',
-            'Net Profit (FY23)': 'Net Profit FY23',
-            '5 Yr Median RoCE': '5 Yr Median RoCE'
-        }
+        # Extracting FY23 PE from the tooltip
+        chart_tooltip = soup.find('div', id='chart-tooltip-title')
 
-        for metric in metrics_container:
-            label = metric.find('span', class_='name')
-            value = metric.find('span', class_='number')
-            if label and value:
-                label_text = label.get_text(strip=True)
-                value_text = value.get_text(strip=True).replace(',', '')  # Remove commas for conversion
+        if chart_tooltip:
+            # Adjusting for the tooltip position to extract values for 1 year prior from today
+            today = datetime.datetime.now()
+            one_year_prior = today - datetime.timedelta(days=365)
 
-                # Store relevant data only
-                if label_text in metric_map:
-                    data[metric_map[label_text]] = value_text
+            # Use a JavaScript-based approach (hypothetical)
+            # The actual tooltip text may not load in a typical request and may require additional logic.
+            tooltip_text = chart_tooltip.get_text(strip=True)
+            if "PE:" in tooltip_text:
+                # Extract PE value
+                pe_value = tooltip_text.split('PE: ')[1].split()[0]
+                data['FY23 PE'] = pe_value
+            
+            if "EPS:" in tooltip_text:
+                # Extract EPS value (if needed)
+                eps_value = tooltip_text.split('EPS: ')[1].split()[0]
+                data['EPS'] = eps_value
 
-        # Simulating the extraction of FY23 PE from the chart tooltip by positioning at 1 year ago
-        chart_data_script = soup.find('script', string=lambda text: text and "series" in text)
-        if chart_data_script:
-            chart_data_text = chart_data_script.string
-
-            # Simulating that we are looking for data 1 year prior to today (approximate FY23)
-            today = datetime.today()
-            one_year_ago = today - timedelta(days=365)
-            fy23_date_str = one_year_ago.strftime('%Y-%m-%d')
-
-            # Extract the data for the PE values from the JSON-like data in the script
-            # This part will extract the PE ratio and EPS for the closest date to FY23
-            if fy23_date_str in chart_data_text:
-                # Logic to extract FY23 PE and EPS based on the approximate date
-                # Extract the relevant JSON object for FY23 date from the data series
-                pe_start_idx = chart_data_text.find(fy23_date_str)
-                pe_end_idx = chart_data_text.find(',', pe_start_idx)
-                fy23_pe_value = chart_data_text[pe_start_idx:pe_end_idx].split(":")[-1].strip()
-
-                data['FY23 PE'] = fy23_pe_value
-
-            # Extracting the 5-Year Median RoCE from the legend
-            legend_items = soup.find_all('label')
-            for item in legend_items:
-                if "Median PE" in item.get_text():
-                    median_pe_text = item.get_text().split('=')[-1].strip()
-                    data['5 Yr Median RoCE'] = median_pe_text
+        # Get the Median PE from the chart legend
+        chart_legend = soup.find(id='chart-legend')
+        if chart_legend:
+            median_pe_text = [label.get_text(strip=True) for label in chart_legend.find_all('label')]
+            for label in median_pe_text:
+                if "Median PE" in label:
+                    data['5 Yr Median RoCE'] = label.split('= ')[1]  # Get the value after 'Median PE = '
 
     except Exception as e:
         st.error(f"Error occurred: {e}")
