@@ -30,13 +30,26 @@ def scrape_screener(stock_symbol):
     try:
         # Find the container that holds the financial metrics
         metrics_container = soup.find_all('li', class_='flex flex-space-between')
-        
+
+        # Dictionary to hold the desired metrics
+        metric_map = {
+            'PE Ratio': 'Current PE',
+            'EPS (TTM)': 'EPS TTM',
+            'Market Cap': 'Market Cap',
+            'Net Profit (FY23)': 'Net Profit FY23',
+            '5 Yr Median RoCE': '5 Yr Median RoCE'
+        }
+
         for metric in metrics_container:
             label = metric.find('span', class_='name')
             value = metric.find('span', class_='number')
             if label and value:
-                # Store data in the dictionary
-                data[label.get_text(strip=True)] = value.get_text(strip=True)
+                label_text = label.get_text(strip=True)
+                value_text = value.get_text(strip=True).replace(',', '')  # Remove commas for conversion
+
+                # Store relevant data only
+                if label_text in metric_map:
+                    data[metric_map[label_text]] = value_text
 
     except Exception as e:
         st.error(f"Error occurred: {e}")
@@ -79,14 +92,13 @@ def main():
     if financials is not None:
         try:
             # Extracting relevant financial data
-            pe_value = financials.get('PE Ratio', 'N/A')  # Ensure the key matches the scraped data
-            fy23_pe = float(pe_value) if pe_value != 'N/A' else 0  # Convert to float if available
-            market_cap = financials.get('Market Cap', 'N/A')
-            roce_median = financials.get('5 Yr Median RoCE', 'N/A')
+            current_pe = float(financials.get('Current PE', '0'))  # Default to 0 if not available
+            fy23_pe = float(financials.get('Net Profit FY23', '0')) / float(financials.get('EPS TTM', '1'))  # Assuming EPS TTM is available
+            roce = float(financials.get('5 Yr Median RoCE', '0'))
 
-            st.write(f"Current PE: {pe_value}")
-            st.write(f"Market Cap: {market_cap}")
-            st.write(f"5-Year Median RoCE (Pre-tax): {roce_median}")
+            st.write(f"Current PE: {current_pe}")
+            st.write(f"FY23 PE: {fy23_pe}")
+            st.write(f"5-Year Median RoCE (Pre-tax): {roce}")
 
             # Sample growth data (this needs to be scraped separately if available)
             growth_data = {
@@ -120,9 +132,6 @@ def main():
             # Perform Intrinsic PE calculation
             intrinsic_pe = calculate_intrinsic_pe(cost_of_capital, roce, growth_high, growth_period, fade_period, terminal_growth)
             st.write(f"Calculated Intrinsic PE: {intrinsic_pe}")
-
-            # Example values for Current PE and FY23 PE
-            current_pe = float(pe_value) if pe_value != 'N/A' else 0  # Ensure this is a float for calculations
 
             # Calculate degree of overvaluation
             degree_of_ov = calculate_overvaluation(current_pe, fy23_pe, intrinsic_pe)
