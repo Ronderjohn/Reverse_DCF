@@ -8,7 +8,7 @@ import plotly.express as px
 
 # Function to scrape stock data from Screener.in
 def scrape_screener(stock_symbol):
-    # Screener URL for the stock (with 5Yr metrics)
+    # Screener URL for the stock
     url = f"https://www.screener.in/company/{stock_symbol}/"
 
     # Send a GET request to the website with headers
@@ -27,43 +27,56 @@ def scrape_screener(stock_symbol):
     # Dictionary to store the scraped data
     data = {}
 
-    # Select the "5Yr" button (simulate the button click)
+    # Targeting the relevant section of the page for financial metrics
     try:
-        five_year_button = soup.find('button', attrs={'value': '1825'})
-        if five_year_button:
-            # Simulating the selection of the 5Yr button by appending it to the URL
-            five_year_url = f"{url}?days=1825"
-            response = requests.get(five_year_url, headers=headers)
-            soup = BeautifulSoup(response.content, 'html.parser')
+        # Find the container that holds the financial metrics
+        metrics_container = soup.find_all('li', class_='flex flex-space-between')
 
-        # Extracting FY23 PE from the tooltip
-        chart_tooltip = soup.find('div', id='chart-tooltip-title')
+        # Dictionary to hold the desired metrics
+        metric_map = {
+            'Stock P/E': 'Stock P/E',
+            'EPS (TTM)': 'EPS TTM',
+            'Market Cap': 'Market Cap',
+            'Net Profit (FY23)': 'Net Profit FY23',
+        }
 
-        if chart_tooltip:
-            # Adjusting for the tooltip position to extract values for 1 year prior from today
-            today = datetime.datetime.now()
-            one_year_prior = today - datetime.timedelta(days=365)
+        for metric in metrics_container:
+            label = metric.find('span', class_='name')
+            value = metric.find('span', class_='number')
+            if label and value:
+                label_text = label.get_text(strip=True)
+                value_text = value.get_text(strip=True).replace(',', '')  # Remove commas for conversion
 
-            # Use a JavaScript-based approach (hypothetical)
-            # The actual tooltip text may not load in a typical request and may require additional logic.
-            tooltip_text = chart_tooltip.get_text(strip=True)
-            if "PE:" in tooltip_text:
-                # Extract PE value
-                pe_value = tooltip_text.split('PE: ')[1].split()[0]
-                data['FY23 PE'] = pe_value
-            
-            if "EPS:" in tooltip_text:
-                # Extract EPS value (if needed)
-                eps_value = tooltip_text.split('EPS: ')[1].split()[0]
-                data['EPS'] = eps_value
+                # Store relevant data only
+                if label_text in metric_map:
+                    data[metric_map[label_text]] = value_text
 
-        # Get the Median PE from the chart legend
-        chart_legend = soup.find(id='chart-legend')
-        if chart_legend:
-            median_pe_text = [label.get_text(strip=True) for label in chart_legend.find_all('label')]
-            for label in median_pe_text:
-                if "Median PE" in label:
-                    data['5 Yr Median RoCE'] = label.split('= ')[1]  # Get the value after 'Median PE = '
+        # Selecting the "5Yr" metrics by simulating the button click
+        five_year_url = f"{url}?days=1825"  # Assuming 1825 days corresponds to 5 years
+        response = requests.get(five_year_url, headers=headers)
+        soup = BeautifulSoup(response.content, 'html.parser')
+
+        # Extracting the values from the chart section for FY23 PE and 5-Year Median RoCE
+        chart_section = soup.find(id='chart')
+        if chart_section:
+            # Extracting 5-Year Median RoCE
+            median_roce_label = chart_section.find('label', string="5-Year Median RoCE")
+            if median_roce_label:
+                median_roce_value = median_roce_label.find_next('span').get_text(strip=True).replace(',', '')
+                data['5 Yr Median RoCE'] = median_roce_value
+
+            # Adjusting tooltip position for 1 year prior
+            one_year_ago = datetime.now() - timedelta(days=365)
+            tooltip_date = one_year_ago.strftime("%Y-%m-%d")
+
+            # Here we would find the tooltip data by locating elements specific to that date
+            # Example: Find the tooltip that corresponds to one_year_ago
+            tooltip = chart_section.find('div', {'data-date': tooltip_date})
+            if tooltip:
+                tooltip_text = tooltip.get_text(strip=True)
+                if 'PE:' in tooltip_text:
+                    fy23_pe = tooltip_text.split('PE:')[1].split('EPS:')[0].strip()
+                    data['FY23 PE'] = fy23_pe
 
     except Exception as e:
         st.error(f"Error occurred: {e}")
