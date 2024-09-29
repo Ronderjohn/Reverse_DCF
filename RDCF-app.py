@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 # Function to scrape Screener.in data
 def fetch_company_data(symbol):
     # Try fetching consolidated data
-    url = f"https://www.screener.in/company/{symbol}/consolidated/"
+    url = f"https://www.screener.in/company/{symbol}/"
     response = requests.get(url)
     if response.status_code != 200:  # If not available, fallback to standalone data
         url = f"https://www.screener.in/company/{symbol}/"
