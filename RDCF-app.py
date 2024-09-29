@@ -92,7 +92,7 @@ def main():
     if financials is not None:
         try:
             # Extracting relevant financial data
-            current_pe = float(financials.get('Current PE', '0'))  # Default to 0 if not available
+            current_pe = float(financials.get('Stock P/E', '0'))  # Default to 0 if not available
             fy23_pe = float(financials.get('Net Profit FY23', '0')) / float(financials.get('EPS TTM', '1'))  # Assuming EPS TTM is available
             roce = float(financials.get('5 Yr Median RoCE', '0'))
 
