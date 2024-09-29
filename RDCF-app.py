@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 # Function to scrape stock data from Screener.in
+# Function to scrape stock data from Screener.in
 def scrape_screener(stock_symbol):
     # Screener URL for the stock
     url = f"https://www.screener.in/company/{stock_symbol}/"
@@ -51,33 +52,30 @@ def scrape_screener(stock_symbol):
                 if label_text in metric_map:
                     data[metric_map[label_text]] = value_text
 
-        # Extract FY23 PE and 5 Year Median RoCE from the chart tooltip
-        chart_tooltip = soup.find('div', id='chart-tooltip-title')
-        if chart_tooltip:
-            # Extract PE and EPS values from the tooltip
-            tooltip_text = chart_tooltip.get_text(strip=True)
-            if "PE:" in tooltip_text:
-                # Extract PE value
-                pe_value = tooltip_text.split('PE: ')[1].split()[0]  # Get the PE value after 'PE: '
-                data['FY23 PE'] = pe_value
-            
-            if "EPS:" in tooltip_text:
-                # Extract EPS value (if needed)
-                eps_value = tooltip_text.split('EPS: ')[1].split()[0]  # Get the EPS value after 'EPS: '
+        # Scraping the chart section for FY23 PE and 5-Year Median RoCE
+        chart_section = soup.find(id='chart')
+        if chart_section:
+            # Extracting median PE from the chart legend
+            legend_items = chart_section.find_all('label')
+            for item in legend_items:
+                if "Median PE" in item.get_text():
+                    median_pe_text = item.get_text().split('=')[-1].strip()
+                    data['5 Yr Median RoCE'] = median_pe_text
 
-        # Get the Median PE from the chart legend
-        chart_legend = soup.find(id='chart-legend')
-        if chart_legend:
-            median_pe_text = [label.get_text(strip=True) for label in chart_legend.find_all('label')]
-            for label in median_pe_text:
-                if "Median PE" in label:
-                    data['5 Yr Median RoCE'] = label.split('= ')[1]  # Get the value after 'Median PE = '
+            # Extracting PE and EPS from the tooltip (latest data)
+            tooltip = chart_section.find(id='chart-tooltip-title')
+            if tooltip:
+                tooltip_text = tooltip.get_text(strip=True)
+                if 'PE:' in tooltip_text:
+                    fy23_pe = tooltip_text.split('PE:')[1].split('EPS:')[0].strip()
+                    data['FY23 PE'] = fy23_pe
 
     except Exception as e:
         st.error(f"Error occurred: {e}")
         return None
 
     return data
+
 
 # DCF model for intrinsic PE calculation
 def calculate_intrinsic_pe(cost_of_capital, roce, growth_high, growth_period, fade_period, terminal_growth):
